@@ -233,6 +233,11 @@
       flex: 0 0 auto;
     }
 
+    .checkline.is-disabled {
+      color: #9aa5b3;
+      background: #f1f3f6;
+    }
+
     .add-home-button {
       min-height: 42px;
       border-radius: var(--radius);
@@ -471,6 +476,15 @@
       gap: 10px;
     }
 
+    .runner-notice {
+      min-height: 18px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      text-align: center;
+    }
+
     @media (max-width: 380px) {
       .timer-card {
         min-height: 74px;
@@ -527,7 +541,7 @@
       <footer class="bottom-shell">
         <div class="bottom-bar">
           <div class="reminders" aria-label="提醒方式">
-            <label class="checkline">
+            <label class="checkline" id="vibrateLine">
               <input id="vibrateOption" type="checkbox" checked>
               <span>震动</span>
             </label>
@@ -600,6 +614,7 @@
         <button class="ghost-action" id="pauseButton" type="button">暂停</button>
         <button class="danger-action" id="stopButton" type="button">结束</button>
       </div>
+      <div class="runner-notice" id="runnerNotice" role="status"></div>
     </div>
   </section>
 
@@ -628,6 +643,7 @@
     const minutesPicker = document.getElementById("minutesPicker");
     const secondsPicker = document.getElementById("secondsPicker");
     const message = document.getElementById("message");
+    const vibrateLine = document.getElementById("vibrateLine");
     const vibrateOption = document.getElementById("vibrateOption");
     const soundOption = document.getElementById("soundOption");
     const runningPanel = document.getElementById("runningPanel");
@@ -637,12 +653,14 @@
     const pauseButton = document.getElementById("pauseButton");
     const stopButton = document.getElementById("stopButton");
     const closeRunner = document.getElementById("closeRunner");
+    const runnerNotice = document.getElementById("runnerNotice");
 
     let customTimers = readStoredTimers();
     let currentTimer = null;
     let audioContext = null;
     let alertAudio = null;
     let alertAudioReady = false;
+    let vibrationSupported = typeof navigator.vibrate === "function";
     let tickHandle = 0;
 
     function fillPicker(select, max, selected) {
@@ -685,6 +703,23 @@
         vibrate: vibrateOption.checked,
         sound: soundOption.checked
       }));
+    }
+
+    function updateVibrationAvailability() {
+      const text = vibrateLine.querySelector("span");
+      if (!vibrationSupported) {
+        vibrateOption.checked = false;
+        vibrateOption.disabled = true;
+        vibrateLine.classList.add("is-disabled");
+        vibrateLine.title = "当前浏览器或设备不支持网页震动";
+        text.textContent = "震动不可用";
+        return;
+      }
+
+      vibrateOption.disabled = false;
+      vibrateLine.classList.remove("is-disabled");
+      vibrateLine.title = "";
+      text.textContent = "震动";
     }
 
     function formatDuration(totalSeconds) {
@@ -766,6 +801,7 @@
     function startTimer(timer) {
       prepareAlerts();
       clearInterval(tickHandle);
+      runnerNotice.textContent = "";
       currentTimer = {
         name: timer.name,
         duration: timer.seconds,
@@ -823,6 +859,7 @@
     function stopTimer() {
       clearInterval(tickHandle);
       currentTimer = null;
+      runnerNotice.textContent = "";
       document.title = homeView.hidden ? "新增计时器" : "计时器工具";
       runningPanel.classList.remove("is-open");
       runningPanel.setAttribute("aria-hidden", "true");
@@ -832,7 +869,10 @@
       clearInterval(tickHandle);
       document.title = "计时完成";
       if (vibrateOption.checked) {
-        vibrateDevice([260, 120, 260, 120, 420]);
+        const vibrated = triggerFinishVibration();
+        if (!vibrated) {
+          runnerNotice.textContent = "当前浏览器或设备不支持网页震动。";
+        }
       }
       if (soundOption.checked) {
         playChime();
@@ -952,15 +992,25 @@
     }
 
     function vibrateDevice(pattern) {
-      if ("vibrate" in navigator) {
+      if (typeof navigator.vibrate === "function") {
         try {
-          navigator.vibrate(pattern);
-          return true;
+          return navigator.vibrate(pattern) !== false;
         } catch {
           return false;
         }
       }
       return false;
+    }
+
+    function triggerFinishVibration() {
+      const first = vibrateDevice([500, 180, 500, 180, 700]);
+      if (first) {
+        window.setTimeout(() => vibrateDevice([220, 120, 220]), 1500);
+      } else {
+        vibrationSupported = false;
+        updateVibrationAvailability();
+      }
+      return first;
     }
 
     function playTone(start, frequency, duration, gainValue) {
@@ -1001,12 +1051,12 @@
         if (playPromise && typeof playPromise.catch === "function") {
           playPromise.catch(() => {
             if (!played && !alertAudioReady) {
-              showMessage("浏览器阻止了铃声播放。");
+              runnerNotice.textContent = "浏览器阻止了铃声播放。";
             }
           });
         }
       } catch {
-        if (!played) showMessage("浏览器阻止了铃声播放。");
+        if (!played) runnerNotice.textContent = "浏览器阻止了铃声播放。";
       }
     }
 
@@ -1079,8 +1129,9 @@
     });
 
     const prefs = readPrefs();
-    vibrateOption.checked = Boolean(prefs.vibrate);
+    vibrateOption.checked = vibrationSupported && Boolean(prefs.vibrate);
     soundOption.checked = Boolean(prefs.sound);
+    updateVibrationAvailability();
     renderTimers();
   </script>
 </body>
