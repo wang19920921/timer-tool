@@ -238,6 +238,12 @@
       background: #f1f3f6;
     }
 
+    .checkline.is-simulated {
+      color: #735a10;
+      background: #fff8e4;
+      border-color: #ead28a;
+    }
+
     .add-home-button {
       min-height: 42px;
       border-radius: var(--radius);
@@ -426,6 +432,44 @@
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       padding: 20px;
+    }
+
+    .runner.is-shaking {
+      animation: simulated-vibration 520ms linear;
+    }
+
+    @keyframes simulated-vibration {
+      0%,
+      100% {
+        transform: translate3d(0, 0, 0);
+      }
+      10% {
+        transform: translate3d(-7px, 0, 0);
+      }
+      20% {
+        transform: translate3d(7px, -1px, 0);
+      }
+      30% {
+        transform: translate3d(-6px, 1px, 0);
+      }
+      40% {
+        transform: translate3d(6px, 0, 0);
+      }
+      50% {
+        transform: translate3d(-5px, -1px, 0);
+      }
+      60% {
+        transform: translate3d(5px, 1px, 0);
+      }
+      70% {
+        transform: translate3d(-4px, 0, 0);
+      }
+      80% {
+        transform: translate3d(4px, 0, 0);
+      }
+      90% {
+        transform: translate3d(-2px, 0, 0);
+      }
     }
 
     .runner-head {
@@ -654,6 +698,7 @@
     const stopButton = document.getElementById("stopButton");
     const closeRunner = document.getElementById("closeRunner");
     const runnerNotice = document.getElementById("runnerNotice");
+    const runner = document.querySelector(".runner");
 
     let customTimers = readStoredTimers();
     let currentTimer = null;
@@ -708,16 +753,17 @@
     function updateVibrationAvailability() {
       const text = vibrateLine.querySelector("span");
       if (!vibrationSupported) {
-        vibrateOption.checked = false;
-        vibrateOption.disabled = true;
-        vibrateLine.classList.add("is-disabled");
-        vibrateLine.title = "当前浏览器或设备不支持网页震动";
-        text.textContent = "震动不可用";
+        vibrateOption.disabled = false;
+        vibrateLine.classList.remove("is-disabled");
+        vibrateLine.classList.add("is-simulated");
+        vibrateLine.title = "当前浏览器或设备不支持真实震动，将使用短音效和抖动动画";
+        text.textContent = "模拟震动";
         return;
       }
 
       vibrateOption.disabled = false;
       vibrateLine.classList.remove("is-disabled");
+      vibrateLine.classList.remove("is-simulated");
       vibrateLine.title = "";
       text.textContent = "震动";
     }
@@ -869,9 +915,9 @@
       clearInterval(tickHandle);
       document.title = "计时完成";
       if (vibrateOption.checked) {
-        const vibrated = triggerFinishVibration();
-        if (!vibrated) {
-          runnerNotice.textContent = "当前浏览器或设备不支持网页震动。";
+        const vibrationResult = triggerFinishVibration();
+        if (vibrationResult === "simulated") {
+          runnerNotice.textContent = "已用短音效和抖动动画模拟震动。";
         }
       }
       if (soundOption.checked) {
@@ -1006,11 +1052,39 @@
       const first = vibrateDevice([500, 180, 500, 180, 700]);
       if (first) {
         window.setTimeout(() => vibrateDevice([220, 120, 220]), 1500);
+        return "native";
       } else {
         vibrationSupported = false;
         updateVibrationAvailability();
+        simulateVibration();
+        return "simulated";
       }
-      return first;
+    }
+
+    function simulateVibration() {
+      shakeRunner();
+      playBuzz();
+      window.setTimeout(shakeRunner, 760);
+    }
+
+    function shakeRunner() {
+      runner.classList.remove("is-shaking");
+      void runner.offsetWidth;
+      runner.classList.add("is-shaking");
+      window.setTimeout(() => runner.classList.remove("is-shaking"), 620);
+    }
+
+    function playBuzz() {
+      try {
+        primeAudio();
+        if (!audioContext || audioContext.state !== "running") return;
+        const now = audioContext.currentTime;
+        playTone(now, 120, 0.12, 0.28);
+        playTone(now + 0.16, 95, 0.13, 0.26);
+        playTone(now + 0.34, 120, 0.16, 0.28);
+      } catch {
+        return;
+      }
     }
 
     function playTone(start, frequency, duration, gainValue) {
@@ -1129,7 +1203,7 @@
     });
 
     const prefs = readPrefs();
-    vibrateOption.checked = vibrationSupported && Boolean(prefs.vibrate);
+    vibrateOption.checked = Boolean(prefs.vibrate);
     soundOption.checked = Boolean(prefs.sound);
     updateVibrationAvailability();
     renderTimers();
