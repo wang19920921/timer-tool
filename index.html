@@ -641,6 +641,8 @@
     let customTimers = readStoredTimers();
     let currentTimer = null;
     let audioContext = null;
+    let alertAudio = null;
+    let alertAudioReady = false;
     let tickHandle = 0;
 
     function fillPicker(select, max, selected) {
@@ -762,7 +764,7 @@
     }
 
     function startTimer(timer) {
-      primeAudio();
+      prepareAlerts();
       clearInterval(tickHandle);
       currentTimer = {
         name: timer.name,
@@ -829,8 +831,8 @@
     function finishTimer() {
       clearInterval(tickHandle);
       document.title = "计时完成";
-      if (vibrateOption.checked && "vibrate" in navigator) {
-        navigator.vibrate([220, 90, 220, 90, 340]);
+      if (vibrateOption.checked) {
+        vibrateDevice([260, 120, 260, 120, 420]);
       }
       if (soundOption.checked) {
         playChime();
@@ -839,17 +841,130 @@
       pauseButton.dataset.action = "restart";
     }
 
-    function primeAudio() {
-      if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    function createAlertAudio() {
+      if (alertAudio) return alertAudio;
+
+      const sampleRate = 44100;
+      const notes = [
+        { frequency: 660, start: 0, duration: 0.24 },
+        { frequency: 880, start: 0.27, duration: 0.25 },
+        { frequency: 1046.5, start: 0.58, duration: 0.38 }
+      ];
+      const totalSeconds = 1.05;
+      const samples = Math.floor(sampleRate * totalSeconds);
+      const dataBytes = samples * 2;
+      const buffer = new ArrayBuffer(44 + dataBytes);
+      const view = new DataView(buffer);
+
+      writeString(view, 0, "RIFF");
+      view.setUint32(4, 36 + dataBytes, true);
+      writeString(view, 8, "WAVE");
+      writeString(view, 12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(view, 36, "data");
+      view.setUint32(40, dataBytes, true);
+
+      for (let index = 0; index < samples; index += 1) {
+        const time = index / sampleRate;
+        let sample = 0;
+        notes.forEach((note) => {
+          if (time >= note.start && time <= note.start + note.duration) {
+            const localTime = time - note.start;
+            const fadeIn = Math.min(1, localTime / 0.02);
+            const fadeOut = Math.min(1, (note.duration - localTime) / 0.06);
+            const envelope = Math.max(0, Math.min(fadeIn, fadeOut));
+            sample += Math.sin(2 * Math.PI * note.frequency * localTime) * 0.28 * envelope;
+          }
+        });
+        view.setInt16(44 + index * 2, Math.max(-1, Math.min(1, sample)) * 32767, true);
       }
-      if (audioContext.state === "suspended") {
-        audioContext.resume();
+
+      const blob = new Blob([buffer], { type: "audio/wav" });
+      alertAudio = new Audio(URL.createObjectURL(blob));
+      alertAudio.preload = "auto";
+      return alertAudio;
+    }
+
+    function writeString(view, offset, text) {
+      for (let index = 0; index < text.length; index += 1) {
+        view.setUint8(offset + index, text.charCodeAt(index));
       }
     }
 
+    function prepareAlerts() {
+      primeAudio();
+      unlockAudioElement();
+    }
+
+    function primeAudio() {
+      const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextConstructor) return;
+
+      if (!audioContext) {
+        audioContext = new AudioContextConstructor();
+      }
+
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
+
+      const now = audioContext.currentTime;
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start(now);
+      oscillator.stop(now + 0.04);
+    }
+
+    function unlockAudioElement() {
+      try {
+        const audio = createAlertAudio();
+        audio.volume = 0;
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.then === "function") {
+          playPromise
+            .then(() => {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.volume = 1;
+              alertAudioReady = true;
+            })
+            .catch(() => {
+              audio.volume = 1;
+            });
+        } else {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = 1;
+          alertAudioReady = true;
+        }
+      } catch {
+        alertAudioReady = false;
+      }
+    }
+
+    function vibrateDevice(pattern) {
+      if ("vibrate" in navigator) {
+        try {
+          navigator.vibrate(pattern);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    }
+
     function playTone(start, frequency, duration, gainValue) {
-      if (!audioContext) return;
+      if (!audioContext || audioContext.state === "closed") return;
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
       oscillator.type = "sine";
@@ -864,14 +979,34 @@
     }
 
     function playChime() {
+      let played = false;
       try {
         primeAudio();
-        const now = audioContext.currentTime;
-        playTone(now, 660, 0.22, 0.22);
-        playTone(now + 0.24, 880, 0.24, 0.2);
-        playTone(now + 0.52, 1046.5, 0.34, 0.18);
+        if (audioContext && audioContext.state === "running") {
+          const now = audioContext.currentTime;
+          playTone(now, 660, 0.26, 0.34);
+          playTone(now + 0.3, 880, 0.28, 0.32);
+          playTone(now + 0.64, 1046.5, 0.42, 0.3);
+          played = true;
+        }
       } catch {
-        showMessage("浏览器阻止了铃声播放。");
+        played = false;
+      }
+
+      try {
+        const audio = createAlertAudio();
+        audio.volume = 1;
+        audio.currentTime = 0;
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+          playPromise.catch(() => {
+            if (!played && !alertAudioReady) {
+              showMessage("浏览器阻止了铃声播放。");
+            }
+          });
+        }
+      } catch {
+        if (!played) showMessage("浏览器阻止了铃声播放。");
       }
     }
 
