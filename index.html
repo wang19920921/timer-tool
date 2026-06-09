@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>计时器工具</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --surface: #ffffff;
+      --surface-soft: #eef5f1;
+      --ink: #17202a;
+      --muted: #687587;
+      --line: #dce3ec;
+      --green: #1f8a5b;
+      --green-dark: #166946;
+      --teal: #167a87;
+      --yellow: #f4c54a;
+      --red: #d44a3a;
+      --shadow: 0 18px 48px rgba(23, 32, 42, 0.12);
+      --radius: 8px;
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .app {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .view {
+      display: contents;
+    }
+
+    .view[hidden] {
+      display: none;
+    }
+
+    .topbar {
+      padding: 20px 18px 12px;
+      background: rgba(255, 255, 255, 0.9);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar-inner,
+    .content,
+    .bottom-bar {
+      width: min(520px, 100%);
+      margin: 0 auto;
+    }
+
+    .topbar-row {
+      display: grid;
+      grid-template-columns: 44px 1fr 44px;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      line-height: 1.16;
+      letter-spacing: 0;
+    }
+
+    .add-title {
+      margin: 0;
+      text-align: center;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .subline {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .content {
+      padding: 14px 14px 18px;
+    }
+
+    .timer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .timer-card {
+      min-height: 78px;
+      padding: 11px;
+      border-radius: var(--radius);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      box-shadow: 0 7px 18px rgba(23, 32, 42, 0.05);
+      color: var(--ink);
+      text-align: left;
+      display: grid;
+      align-content: space-between;
+      gap: 8px;
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .timer-card:active {
+      transform: scale(0.98);
+    }
+
+    .timer-card:focus-visible,
+    .primary-action:focus-visible,
+    .ghost-action:focus-visible,
+    .danger-action:focus-visible,
+    .icon-button:focus-visible,
+    .field input:focus-visible,
+    .wheel-select:focus-visible,
+    .checkline:focus-within {
+      outline: 3px solid rgba(22, 122, 135, 0.24);
+      outline-offset: 2px;
+    }
+
+    .timer-name {
+      display: block;
+      min-height: 20px;
+      font-size: 15px;
+      font-weight: 720;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .timer-duration {
+      display: inline-flex;
+      width: fit-content;
+      max-width: 100%;
+      align-items: center;
+      gap: 6px;
+      color: var(--green-dark);
+      background: var(--surface-soft);
+      border-radius: 999px;
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .timer-duration::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--yellow);
+      box-shadow: 0 0 0 3px rgba(244, 197, 74, 0.22);
+      flex: 0 0 auto;
+    }
+
+    .bottom-shell {
+      position: sticky;
+      bottom: 0;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.94);
+      border-top: 1px solid var(--line);
+      backdrop-filter: blur(14px);
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    }
+
+    .bottom-bar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .reminders {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .checkline {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      color: var(--ink);
+      background: #f5f7fa;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 9px 10px;
+      font-size: 13px;
+      font-weight: 650;
+      user-select: none;
+    }
+
+    .checkline input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--green);
+      flex: 0 0 auto;
+    }
+
+    .add-home-button {
+      min-height: 42px;
+      border-radius: var(--radius);
+      background: var(--teal);
+      color: #fff;
+      padding: 0 14px;
+      font-size: 14px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .add-content {
+      display: grid;
+      gap: 20px;
+      align-content: start;
+      padding-top: 18px;
+    }
+
+    #addForm {
+      display: grid;
+      gap: 18px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .field span,
+    .picker-label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .field input {
+      min-width: 0;
+      height: 48px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--ink);
+      padding: 0 12px;
+      outline: none;
+    }
+
+    .duration-block {
+      display: grid;
+      gap: 8px;
+    }
+
+    .duration-picker {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(180deg, rgba(247, 248, 251, 0.9), rgba(247, 248, 251, 0) 35%),
+        linear-gradient(0deg, rgba(247, 248, 251, 0.9), rgba(247, 248, 251, 0) 35%),
+        #fff;
+    }
+
+    .picker-column {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .wheel-select {
+      width: 100%;
+      height: 92px;
+      border: 0;
+      border-radius: var(--radius);
+      background: #f3f6f9;
+      color: var(--ink);
+      text-align: center;
+      text-align-last: center;
+      font-size: 24px;
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+      outline: none;
+      appearance: none;
+    }
+
+    .wheel-select option {
+      font-size: 18px;
+      font-weight: 650;
+    }
+
+    .unit-label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .form-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .primary-action,
+    .ghost-action,
+    .danger-action {
+      min-height: 48px;
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      font-weight: 720;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .primary-action {
+      background: var(--green);
+      color: #fff;
+    }
+
+    .ghost-action {
+      color: var(--ink);
+      background: #eef2f7;
+    }
+
+    .danger-action {
+      color: #fff;
+      background: var(--red);
+    }
+
+    .icon-button {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      color: var(--muted);
+      background: #f1f4f8;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      font-size: 23px;
+      line-height: 1;
+    }
+
+    .message {
+      min-height: 18px;
+      color: var(--red);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .empty {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.6);
+    }
+
+    .running-panel {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      background: rgba(246, 247, 251, 0.96);
+      backdrop-filter: blur(10px);
+      padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
+    }
+
+    .running-panel.is-open {
+      display: grid;
+      place-items: center;
+    }
+
+    .runner {
+      width: min(520px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+
+    .runner-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .runner-title {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .time-display {
+      margin: 10px 0 16px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(56px, 19vw, 104px);
+      font-weight: 760;
+      line-height: 1;
+    }
+
+    .progress-track {
+      height: 12px;
+      border-radius: 999px;
+      background: #e6ebf2;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+
+    .progress-fill {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), var(--teal));
+      transform-origin: left center;
+      transform: scaleX(1);
+      transition: transform 220ms linear;
+    }
+
+    .runner-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 380px) {
+      .timer-card {
+        min-height: 74px;
+        padding: 10px;
+      }
+
+      .timer-name {
+        font-size: 14px;
+      }
+
+      .timer-duration {
+        font-size: 11px;
+      }
+
+      .bottom-bar {
+        grid-template-columns: 1fr;
+      }
+
+      .add-home-button {
+        width: 100%;
+      }
+
+      .wheel-select {
+        height: 84px;
+        font-size: 21px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+        animation-duration: 1ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="view" id="homeView">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <h1>计时器</h1>
+          <p class="subline">点一下开始倒计时，自定义项目会保存在本机浏览器中。</p>
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="timer-grid" id="timerGrid" aria-live="polite"></div>
+      </main>
+
+      <footer class="bottom-shell">
+        <div class="bottom-bar">
+          <div class="reminders" aria-label="提醒方式">
+            <label class="checkline">
+              <input id="vibrateOption" type="checkbox" checked>
+              <span>震动</span>
+            </label>
+            <label class="checkline">
+              <input id="soundOption" type="checkbox" checked>
+              <span>铃声</span>
+            </label>
+          </div>
+          <button class="add-home-button" id="openAddView" type="button">新增</button>
+        </div>
+      </footer>
+    </section>
+
+    <section class="view" id="addView" hidden>
+      <header class="topbar">
+        <div class="topbar-inner topbar-row">
+          <button class="icon-button" id="backHome" type="button" title="返回" aria-label="返回">‹</button>
+          <h1 class="add-title">新增计时器</h1>
+          <span aria-hidden="true"></span>
+        </div>
+      </header>
+
+      <main class="content add-content">
+        <form id="addForm" autocomplete="off">
+          <label class="field">
+            <span>名称</span>
+            <input id="timerName" maxlength="18" placeholder="例如 拉伸">
+          </label>
+
+          <div class="duration-block">
+            <div class="picker-label">时长</div>
+            <div class="duration-picker" aria-label="选择时长">
+              <label class="picker-column">
+                <select class="wheel-select" id="hoursPicker" aria-label="小时"></select>
+                <span class="unit-label">时</span>
+              </label>
+              <label class="picker-column">
+                <select class="wheel-select" id="minutesPicker" aria-label="分钟"></select>
+                <span class="unit-label">分</span>
+              </label>
+              <label class="picker-column">
+                <select class="wheel-select" id="secondsPicker" aria-label="秒"></select>
+                <span class="unit-label">秒</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="message" id="message" role="status"></div>
+
+          <div class="form-actions">
+            <button class="ghost-action" id="cancelAdd" type="button">取消</button>
+            <button class="primary-action" type="submit">保存</button>
+          </div>
+        </form>
+      </main>
+    </section>
+  </div>
+
+  <section class="running-panel" id="runningPanel" aria-hidden="true">
+    <div class="runner" role="dialog" aria-modal="true" aria-labelledby="runningTitle">
+      <div class="runner-head">
+        <h2 class="runner-title" id="runningTitle">计时中</h2>
+        <button class="icon-button" id="closeRunner" type="button" title="关闭" aria-label="关闭">×</button>
+      </div>
+      <div class="time-display" id="timeDisplay">00:00</div>
+      <div class="progress-track" aria-hidden="true">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="runner-actions">
+        <button class="ghost-action" id="pauseButton" type="button">暂停</button>
+        <button class="danger-action" id="stopButton" type="button">结束</button>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const DEFAULT_TIMERS = [
+      { id: "break-90", name: "组间歇", seconds: 90 },
+      { id: "move-20", name: "久坐活动", seconds: 20 * 60 },
+      { id: "pomodoro-25", name: "番茄钟", seconds: 25 * 60 },
+      { id: "stretch-5", name: "拉伸", seconds: 5 * 60 },
+      { id: "focus-45", name: "专注", seconds: 45 * 60 },
+      { id: "reset-10", name: "休息", seconds: 10 * 60 }
+    ];
+
+    const STORAGE_KEY = "singlePageTimers.v1";
+    const PREF_KEY = "singlePageTimerPrefs.v1";
+
+    const homeView = document.getElementById("homeView");
+    const addView = document.getElementById("addView");
+    const timerGrid = document.getElementById("timerGrid");
+    const openAddView = document.getElementById("openAddView");
+    const backHome = document.getElementById("backHome");
+    const cancelAdd = document.getElementById("cancelAdd");
+    const addForm = document.getElementById("addForm");
+    const timerName = document.getElementById("timerName");
+    const hoursPicker = document.getElementById("hoursPicker");
+    const minutesPicker = document.getElementById("minutesPicker");
+    const secondsPicker = document.getElementById("secondsPicker");
+    const message = document.getElementById("message");
+    const vibrateOption = document.getElementById("vibrateOption");
+    const soundOption = document.getElementById("soundOption");
+    const runningPanel = document.getElementById("runningPanel");
+    const runningTitle = document.getElementById("runningTitle");
+    const timeDisplay = document.getElementById("timeDisplay");
+    const progressFill = document.getElementById("progressFill");
+    const pauseButton = document.getElementById("pauseButton");
+    const stopButton = document.getElementById("stopButton");
+    const closeRunner = document.getElementById("closeRunner");
+
+    let customTimers = readStoredTimers();
+    let currentTimer = null;
+    let audioContext = null;
+    let tickHandle = 0;
+
+    function fillPicker(select, max, selected) {
+      const fragment = document.createDocumentFragment();
+      for (let value = 0; value <= max; value += 1) {
+        const option = document.createElement("option");
+        option.value = String(value);
+        option.textContent = String(value).padStart(2, "0");
+        if (value === selected) option.selected = true;
+        fragment.append(option);
+      }
+      select.append(fragment);
+    }
+
+    function readStoredTimers() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        return Array.isArray(parsed)
+          ? parsed.filter((item) => item && item.name && Number.isFinite(item.seconds))
+          : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function readPrefs() {
+      try {
+        return { vibrate: true, sound: true, ...JSON.parse(localStorage.getItem(PREF_KEY) || "{}") };
+      } catch {
+        return { vibrate: true, sound: true };
+      }
+    }
+
+    function saveTimers() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(customTimers));
+    }
+
+    function savePrefs() {
+      localStorage.setItem(PREF_KEY, JSON.stringify({
+        vibrate: vibrateOption.checked,
+        sound: soundOption.checked
+      }));
+    }
+
+    function formatDuration(totalSeconds) {
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      const parts = [];
+      if (hours) parts.push(`${hours}小时`);
+      if (minutes) parts.push(`${minutes}分钟`);
+      if (seconds || !parts.length) parts.push(`${seconds}秒`);
+      return parts.join("");
+    }
+
+    function formatClock(totalSeconds) {
+      const safeSeconds = Math.max(0, Math.ceil(totalSeconds));
+      const hours = Math.floor(safeSeconds / 3600);
+      const minutes = Math.floor((safeSeconds % 3600) / 60);
+      const seconds = safeSeconds % 60;
+      if (hours) {
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+      }
+      return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+
+    function allTimers() {
+      return [...DEFAULT_TIMERS, ...customTimers];
+    }
+
+    function renderTimers() {
+      const timers = allTimers();
+      timerGrid.innerHTML = "";
+
+      if (!timers.length) {
+        timerGrid.innerHTML = '<div class="empty">还没有计时器</div>';
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      timers.forEach((timer) => {
+        const button = document.createElement("button");
+        button.className = "timer-card";
+        button.type = "button";
+        button.setAttribute("aria-label", `${timer.name}，${formatDuration(timer.seconds)}`);
+        button.innerHTML = `
+          <span class="timer-name"></span>
+          <span class="timer-duration"></span>
+        `;
+        button.querySelector(".timer-name").textContent = timer.name;
+        button.querySelector(".timer-duration").textContent = formatDuration(timer.seconds);
+        button.addEventListener("click", () => startTimer(timer));
+        fragment.append(button);
+      });
+
+      timerGrid.append(fragment);
+    }
+
+    function showHome() {
+      addView.hidden = true;
+      homeView.hidden = false;
+      document.title = "计时器工具";
+      showMessage("");
+    }
+
+    function showAdd() {
+      homeView.hidden = true;
+      addView.hidden = false;
+      document.title = "新增计时器";
+      addForm.reset();
+      minutesPicker.value = "1";
+      secondsPicker.value = "0";
+      showMessage("");
+      window.setTimeout(() => timerName.focus(), 0);
+    }
+
+    function selectedSeconds() {
+      return Number(hoursPicker.value) * 3600 + Number(minutesPicker.value) * 60 + Number(secondsPicker.value);
+    }
+
+    function startTimer(timer) {
+      primeAudio();
+      clearInterval(tickHandle);
+      currentTimer = {
+        name: timer.name,
+        duration: timer.seconds,
+        remaining: timer.seconds,
+        endAt: Date.now() + timer.seconds * 1000,
+        paused: false
+      };
+      runningTitle.textContent = timer.name;
+      runningPanel.classList.add("is-open");
+      runningPanel.setAttribute("aria-hidden", "false");
+      pauseButton.textContent = "暂停";
+      pauseButton.dataset.action = "pause";
+      updateDisplay();
+      tickHandle = window.setInterval(tick, 250);
+    }
+
+    function tick() {
+      if (!currentTimer || currentTimer.paused) return;
+      currentTimer.remaining = (currentTimer.endAt - Date.now()) / 1000;
+      if (currentTimer.remaining <= 0) {
+        currentTimer.remaining = 0;
+        updateDisplay();
+        finishTimer();
+        return;
+      }
+      updateDisplay();
+    }
+
+    function updateDisplay() {
+      if (!currentTimer) return;
+      timeDisplay.textContent = formatClock(currentTimer.remaining);
+      const ratio = currentTimer.duration ? currentTimer.remaining / currentTimer.duration : 0;
+      progressFill.style.transform = `scaleX(${Math.max(0, Math.min(1, ratio))})`;
+      document.title = currentTimer.remaining > 0
+        ? `${formatClock(currentTimer.remaining)} - ${currentTimer.name}`
+        : "计时器工具";
+    }
+
+    function pauseTimer() {
+      if (!currentTimer) return;
+      if (currentTimer.paused) {
+        currentTimer.paused = false;
+        currentTimer.endAt = Date.now() + currentTimer.remaining * 1000;
+        pauseButton.textContent = "暂停";
+        pauseButton.dataset.action = "pause";
+      } else {
+        currentTimer.remaining = Math.max(0, (currentTimer.endAt - Date.now()) / 1000);
+        currentTimer.paused = true;
+        pauseButton.textContent = "继续";
+        pauseButton.dataset.action = "resume";
+      }
+      updateDisplay();
+    }
+
+    function stopTimer() {
+      clearInterval(tickHandle);
+      currentTimer = null;
+      document.title = homeView.hidden ? "新增计时器" : "计时器工具";
+      runningPanel.classList.remove("is-open");
+      runningPanel.setAttribute("aria-hidden", "true");
+    }
+
+    function finishTimer() {
+      clearInterval(tickHandle);
+      document.title = "计时完成";
+      if (vibrateOption.checked && "vibrate" in navigator) {
+        navigator.vibrate([220, 90, 220, 90, 340]);
+      }
+      if (soundOption.checked) {
+        playChime();
+      }
+      pauseButton.textContent = "再来一次";
+      pauseButton.dataset.action = "restart";
+    }
+
+    function primeAudio() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+    }
+
+    function playTone(start, frequency, duration, gainValue) {
+      if (!audioContext) return;
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.02);
+    }
+
+    function playChime() {
+      try {
+        primeAudio();
+        const now = audioContext.currentTime;
+        playTone(now, 660, 0.22, 0.22);
+        playTone(now + 0.24, 880, 0.24, 0.2);
+        playTone(now + 0.52, 1046.5, 0.34, 0.18);
+      } catch {
+        showMessage("浏览器阻止了铃声播放。");
+      }
+    }
+
+    function showMessage(text) {
+      message.textContent = text;
+      if (text) {
+        window.setTimeout(() => {
+          if (message.textContent === text) message.textContent = "";
+        }, 2600);
+      }
+    }
+
+    fillPicker(hoursPicker, 23, 0);
+    fillPicker(minutesPicker, 59, 1);
+    fillPicker(secondsPicker, 59, 0);
+
+    addForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = timerName.value.trim();
+      const seconds = selectedSeconds();
+
+      if (!name) {
+        showMessage("请输入计时器名称。");
+        timerName.focus();
+        return;
+      }
+
+      if (seconds < 1) {
+        showMessage("请选择大于 0 秒的时长。");
+        secondsPicker.focus();
+        return;
+      }
+
+      customTimers.push({
+        id: `custom-${Date.now()}`,
+        name,
+        seconds
+      });
+      saveTimers();
+      renderTimers();
+      showHome();
+    });
+
+    [vibrateOption, soundOption].forEach((option) => {
+      option.addEventListener("change", savePrefs);
+    });
+
+    openAddView.addEventListener("click", showAdd);
+    backHome.addEventListener("click", showHome);
+    cancelAdd.addEventListener("click", showHome);
+
+    pauseButton.addEventListener("click", () => {
+      if (!currentTimer) return;
+      if (pauseButton.dataset.action === "restart") {
+        startTimer({ name: currentTimer.name, seconds: currentTimer.duration });
+        return;
+      }
+      pauseTimer();
+    });
+    stopButton.addEventListener("click", stopTimer);
+    closeRunner.addEventListener("click", stopTimer);
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && currentTimer) stopTimer();
+      if (event.key === "Escape" && !currentTimer && homeView.hidden) showHome();
+      if (event.key === " " && currentTimer) {
+        event.preventDefault();
+        pauseTimer();
+      }
+    });
+
+    const prefs = readPrefs();
+    vibrateOption.checked = Boolean(prefs.vibrate);
+    soundOption.checked = Boolean(prefs.sound);
+    renderTimers();
+  </script>
+</body>
+</html>
